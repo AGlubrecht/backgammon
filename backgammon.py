@@ -13,7 +13,7 @@ class Backgammon:
             self._board = kwargs["board"]    # board with custom size and custom number of pieces
         else:
             # standard backgammon board
-            self._board = [0 for i in range(26)]     # index 1 to 24 are fields, 0 is for white pieces that have been
+            self._board = [0 for i in range(26)]    # index 1 to 24 are fields, 0 is for white pieces that have been
                                                     # kicked out of the game, and so is index 25 for black pieces
                                                     # pieces, which are already in the "safe zone", are no longer stored
 
@@ -27,16 +27,21 @@ class Backgammon:
             self.board[8] = -3
             self.board[6] = -5
 
+        if "num_dices" in kwargs:
+            self.num_dices = kwargs["num_dices"]
+        else:
+            self.num_dices = 2
+
         # decide which player starts
-        self._dice = self.roll_dice()    # store last dice roll
-        while self.dice[0] == self.dice[1]:
-            self.dice = self.roll_dice()
-        if self.dice[0] > self.dice[1]:
+        self._dices = self.roll_dices()    # store last dice roll
+        while self._dices[0] == self._dices[1]:
+            self.dices = self.roll_dices()
+        if self._dices[0] > self._dices[1]:
             self._player = 1     # 1 -> white
-        elif self.dice[0] < self.dice[1]:
+        elif self._dices[0] < self._dices[1]:
             self._player = -1     # -1 -> black
 
-        self.dice_left = self.dice
+        self.dices_left = self._dices
 
         # number by which points are multiplied at the end
         self.multiply = 1
@@ -58,15 +63,15 @@ class Backgammon:
 
     @property
     def dice(self):
-        return self._dice
+        return self._dices
 
     @dice.setter
-    def dice(self, dice):
-        for num in dice:
+    def dice(self, dices):
+        for num in dices:
             if num not in [i+1 for i in range(6)]:
                 raise ValueError("Invalid dice roll: Number must be between 1 and 6.")
-        self._dice = dice
-        self.dice_left = dice
+        self._dices = dices
+        self.dices_left = dices
 
     @property
     def board(self):
@@ -74,42 +79,66 @@ class Backgammon:
 
     @board.setter
     def board(self, board):
-        if len(board) != len(self.board):
+        if len(board) != len(self._board):
             raise ValueError("Invalid board: Board has a different size.")
         self._board = board
 
-    @staticmethod
-    def roll_dice():
-        dice = [randint(1, 6), randint(1, 6)]
-        if dice[0] == dice[1]:
-            return [dice[0]] * 4
-        return dice
+    def roll_dices(self):
+        dices = []
+        for i in range(self.num_dices):
+            dices.append(randint(1, 6))
+        equal = True
+        for dice in dices:
+            if dice != dices[0]:
+                equal = False
+        if equal:
+            return dices*2
+        return dices
 
     def move(self, *args, **kwargs):
         if "move" in kwargs:
             move = kwargs["move"]
             # check for validity of move
-            self.check_move(move)
-            # move is valid
-            self.board[move[0]] -= self.player
-            if self.board[move[1]]*self.player == -1:
-                # kick opposing piece
-                self.board[move[1]] += self.player
-                if self.player == 1:
-                    self.board[25] -= self.player
-                else:
-                    self.board[0] -= self.player
-            self.board[move[1]] += self.player
-            self.dice_left.remove(self.player*(move[1]-move[0]))
+            valid_moves = self.get_valid_moves()
+            if len(valid_moves) == 0:
+                # no moves available
+                self.dices = self.roll_dices()
+                self.player = -self.player
+            elif self.check_move(move):
+                # move is valid
+                self.board[move[0]] -= self.player
+                if 25 > move[1] > 0:
+                    if self.board[move[1]]*self.player == -1:
+                        # kick opposing piece
+                        self.board[move[1]] += self.player
+                        if self.player == 1:
+                            self.board[25] -= self.player
+                        else:
+                            self.board[0] -= self.player
+                    self.board[move[1]] += self.player
+                self.dices_left.remove(self.player*(move[1]-move[0]))
         else:
             # TODO: engine makes a move
             pass
-        if len(self.dice_left) == 0:
+        if self.check_win():
+            self.win()
+        if len(self.dices_left) == 0:
             # no moves left => roll dice and switch player
-            self.dice = self.roll_dice()
+            self.dices = self.roll_dices()
             self.player = -self.player
         print(self)
-        self.check_win()
+
+    def get_valid_moves(self):
+        valid_moves = []
+        for i in range(len(self.board)):
+            for dice in self.dices_left:
+                try:
+                    if self.check_move([i, i+dice]):
+                        valid_moves.append([i, i+dice])
+                except ValueError:
+                    pass
+
+        return valid_moves
 
     def check_move(self, move):
         if len(move) != 2:
@@ -117,22 +146,48 @@ class Backgammon:
         elif self.board[move[0]] * self.player <= 0:
             raise ValueError("Invalid move: You tried to move a piece from field {}, but there are no pieces."
                              .format(move[0]))
-        elif self.board[move[1]] * self.player < -1:
-            raise ValueError("Invalid move: You tried to move a piece to field {},"
-                             "but there are already opposing pieces.".format(move[1]))
-        elif self.player*(move[1]-move[0]) not in self.dice_left:
+        # bring
+        if move[1] >= len(self.board)-1:
+            if not self.check_last_quarter():
+                return ValueError("Invalid move: You tried to move in the safe zone, even though you have pieces"
+                                  "that are not in your last quarter.")
+        elif move[1] <= 0:
+            if not self.check_last_quarter():
+                return ValueError("Invalid move: You tried to move in the safe zone, even though you have pieces"
+                                  "that are not in your last quarter.")
+        else:
+            if self.board[move[1]] * self.player < -1:
+                raise ValueError("Invalid move: You tried to move a piece to field {},"
+                                 "but there are already opposing pieces.".format(move[1]))
+        if self.player*(move[1]-move[0]) not in self.dices_left:
             raise ValueError("Invalid move: You have no move with length {} left."
                              .format(self.player*(move[1]-move[0])))
         return True
 
+    # check if pieces are in the last quarter of the board
+    def check_last_quarter(self):
+        check = True
+        if self.player == 1:
+            rg = (0, int(3*len(self.board)/4))
+        else:
+            rg = (int(len(self.board)/4), len(self.board))
+        for i in range(*rg):
+            if self.board[i]*self.player > 0:
+                check = False
+        return check
+
     def check_win(self):
-        white, black = True, True
+        win = True
         for field in self.board:
-            if field > 0:
-                white = False
-            if field < 0:
-                black = False
-        return white or black
+            if field*self.player > 0:
+                win = False
+        return win
+
+    def win(self):
+        if self.player == 1:
+            print("White won the game!")
+        else:
+            print("Black won the game!")
 
     def __str__(self):
         rep = str(self.board[0]) + " | "
@@ -141,14 +196,14 @@ class Backgammon:
                 rep += " "
             rep += str(self.board[i]) + " "
         rep += "\n"
-        rep += str(self.board[25]) + " | "
+        rep += str(self.board[len(self.board)-1]) + " | "
         for i in range(int(len(self.board)/2), len(self.board)-1):
             if self.board[i] >= 0:
                 rep += " "
             rep += str(self.board[i]) + " "
         rep += "\n"
         rep += "dices: "
-        for num in self.dice_left:
+        for num in self.dices_left:
             rep += str(num) + " "
         rep += "\n"
         rep += "player: " + str(self.player)
