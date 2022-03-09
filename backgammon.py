@@ -1,10 +1,84 @@
 from random import randint
-
+from itertools import permutations
+from copy import copy
 
 class Game:
     def __init__(self):
         self.score = [0, 0]  # index 0 is white, index 1 is black
         self.backgammon = Backgammon()
+
+
+class DiceThrow:
+    def __init__(self, num):
+        self.dice = [randint(1,6) for i in range(num)]
+        equal = True
+        for die in self.dice:
+            if die != self.dice[0]:
+                equal = False
+        if equal:
+            self.dice = self.dice * 2
+
+    def permutations(self):
+        list(set(permutations(self.dice)))
+
+
+class Player:
+    def __init__(self, name, make_move, avatar=None):
+        self.name = name
+        self.points = 0
+        self.make_move = make_move
+        self.avatar = avatar
+
+
+class Leap:
+    def __init__(self, starting_index, distance):
+        if 1 <= distance <= 6:
+            self.starting_index = starting_index
+            self.end_index = starting_index+distance
+        else:
+            raise ValueError("Invalid leap: Distance has to be between 1 and 6.")
+
+
+class Board:
+    default_board = [0, 2, 0, 0, 0, 0, -5, 0, -3, 0, 0, 0, 5, -5, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, -2, 0]
+
+    def __init__(self, board=default_board):
+        self.board = board
+
+    # TODO: move pieces in the game first
+    def check_leap(self, leap, perspective):
+
+        if perspective != -1 and perspective != 1:
+            return False
+
+        elif not leap.isclass(Leap):
+            return False
+        elif self.board[leap[0]] * perspective <= 0:
+            return False
+        # bring
+        elif leap.end_index >= len(self.board) - 1:
+            if not self.check_last_quarter():
+                return False
+        elif leap.end_index <= 0:
+            if not self.check_last_quarter():
+                return False
+        else:
+            if self.board[leap.end_index] * perspective < -1:
+                return False
+        return True
+
+
+    def get_valid_moves(self, dice_permutation, perspective): #returns all ways of applying the dice in order
+        if len(dice_permutation) == 0:
+            return [self]
+        possible_boards = []
+        for i in range(len(self.board)):
+            if self.board[i] * perspective >= 0:
+                if self.check_leap(Leap(i, dice_permutation[0])):
+                    possible_board = Board(copy(self.board))
+                    possible_board.leap(Leap(i, dice_permutation[0]))
+                    possible_boards += possible_board.get_valid_moves(dice_permutation[1:], perspective)
+        return possible_boards
 
 
 class Backgammon:
@@ -14,8 +88,8 @@ class Backgammon:
         else:
             # standard backgammon board
             self._board = [0 for i in range(26)]  # index 1 to 24 are fields, 0 is for white pieces that have been
-            # kicked out of the game, and so is index 25 for black pieces
-            # pieces, which are already in the "safe zone", are no longer stored
+            # kicked out of the game, and so is index 25 for black pieces,
+            # which are already in the "safe zone", are no longer stored
 
             self.board[1] = 2  # positive numbers stand for white pieces
             self.board[12] = 5
@@ -33,24 +107,17 @@ class Backgammon:
             self.num_dices = 2
 
         # store board before move
-        self._board_old = self.board
+        self._board_old = copy(self.board)
 
         # decide which player starts
         self.dices = self.roll_dices()  # store last dice roll
-        self.dices_left = self.dices    # is set automatically when dices are set
+        self.dices_left = copy(self.dices)    # is set automatically when dices are set
         while self.dices[0] == self.dices[1]:
             self.dices = self.roll_dices()
         if self.dices[0] > self.dices[1]:
             self.player = 1  # 1 -> white
         elif self.dices[0] < self.dices[1]:
             self.player = -1  # -1 -> black
-
-        # number by which points are multiplied at the end
-        self.multiply = 1
-        self.multiply_player = 0  # stores which player is allowed to multiply
-        # 0 -> both
-        # 1 -> white
-        # -1 -> black
 
         print(self)
 
@@ -90,7 +157,7 @@ class Backgammon:
     def board(self, board):
         if len(board) != len(self._board):
             raise ValueError("Invalid board: Board has a different size.")
-        self._board = board
+        self._board = copy(board)
 
     @property
     def board_old(self):
@@ -100,7 +167,7 @@ class Backgammon:
     def board_old(self, board):
         if len(board) != len(self._board_old):
             raise ValueError("Invalid board: Board has a different size.")
-        self._board_old = board
+        self._board_old = copy(board)
 
     def roll_dices(self):
         dices = []
@@ -114,11 +181,13 @@ class Backgammon:
             return dices * 2
         return dices
 
+    def entire_move(self, move):    # move = [[starting_point1, starting_point2], [dice1, dice2]]
+
+
     def move(self, *args, **kwargs):
         if "move" in kwargs:
             move = kwargs["move"]
             # check for validity of move
-            valid_moves = self.get_valid_moves()
             if self.check_move(move):
                 # move is valid
                 self.board[move[0]] -= self.player
@@ -152,7 +221,7 @@ class Backgammon:
             self.board_old = self.board
             print(self)
             # make sure there are valid moves
-            while len(self.get_valid_moves) == 0:
+            while len(self.get_valid_moves()) == 0:
                 # no moves available
                 self.dices = self.roll_dices()
                 self.player = -self.player
@@ -170,6 +239,7 @@ class Backgammon:
 
         return valid_moves
 
+    # TODO: move pieces in the game first
     def check_move(self, move):
         if len(move) != 2:
             raise ValueError("Invalid move: Every move has to be list with two elements.")
@@ -238,8 +308,3 @@ class Backgammon:
         rep += "\n"
         rep += "player: " + str(self.player)
         return rep
-
-
-bg = Backgammon()
-bg.move(move=bg.get_valid_moves()[0])
-bg.undo_move()
