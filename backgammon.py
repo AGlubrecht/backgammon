@@ -32,16 +32,18 @@ class Backgammon:
         else:
             self.num_dices = 2
 
-        # decide which player starts
-        self._dices = self.roll_dices()  # store last dice roll
-        while self._dices[0] == self._dices[1]:
-            self.dices = self.roll_dices()
-        if self._dices[0] > self._dices[1]:
-            self._player = 1  # 1 -> white
-        elif self._dices[0] < self._dices[1]:
-            self._player = -1  # -1 -> black
+        # store board before move
+        self._board_old = self.board
 
-        self.dices_left = self._dices
+        # decide which player starts
+        self.dices = self.roll_dices()  # store last dice roll
+        self.dices_left = self.dices    # is set automatically when dices are set
+        while self.dices[0] == self.dices[1]:
+            self.dices = self.roll_dices()
+        if self.dices[0] > self.dices[1]:
+            self.player = 1  # 1 -> white
+        elif self.dices[0] < self.dices[1]:
+            self.player = -1  # -1 -> black
 
         # number by which points are multiplied at the end
         self.multiply = 1
@@ -51,6 +53,13 @@ class Backgammon:
         # -1 -> black
 
         print(self)
+
+        # make sure there are valid moves
+        while len(self.get_valid_moves()) == 0:
+            # no moves available
+            self.dices = self.roll_dices()
+            self.player = -self.player
+            print(self)
 
     @property
     def player(self):
@@ -62,11 +71,11 @@ class Backgammon:
             self._player = player
 
     @property
-    def dice(self):
+    def dices(self):
         return self._dices
 
-    @dice.setter
-    def dice(self, dices):
+    @dices.setter
+    def dices(self, dices):
         for num in dices:
             if num not in [i + 1 for i in range(6)]:
                 raise ValueError("Invalid dice roll: Number must be between 1 and 6.")
@@ -82,6 +91,16 @@ class Backgammon:
         if len(board) != len(self._board):
             raise ValueError("Invalid board: Board has a different size.")
         self._board = board
+
+    @property
+    def board_old(self):
+        return self._board_old
+
+    @board_old.setter
+    def board_old(self, board):
+        if len(board) != len(self._board_old):
+            raise ValueError("Invalid board: Board has a different size.")
+        self._board_old = board
 
     def roll_dices(self):
         dices = []
@@ -100,11 +119,7 @@ class Backgammon:
             move = kwargs["move"]
             # check for validity of move
             valid_moves = self.get_valid_moves()
-            if len(valid_moves) == 0:
-                # no moves available
-                self.dices = self.roll_dices()
-                self.player = -self.player
-            elif self.check_move(move):
+            if self.check_move(move):
                 # move is valid
                 self.board[move[0]] -= self.player
                 if 25 > move[1] > 0:
@@ -122,19 +137,34 @@ class Backgammon:
             pass
         if self.check_win():
             self.win()
+        print(self)
+
+    def undo_move(self):
+        self.board = self.board_old
+        self.dices_left = self.dices
+        print(self)
+
+    def commit_move(self):
         if len(self.dices_left) == 0:
             # no moves left => roll dice and switch player
             self.dices = self.roll_dices()
             self.player = -self.player
-        print(self)
+            self.board_old = self.board
+            print(self)
+            # make sure there are valid moves
+            while len(self.get_valid_moves) == 0:
+                # no moves available
+                self.dices = self.roll_dices()
+                self.player = -self.player
+                print(self)
 
     def get_valid_moves(self):
         valid_moves = []
         for i in range(len(self.board)):
             for dice in self.dices_left:
                 try:
-                    if self.check_move([i, i + dice]):
-                        valid_moves.append([i, i + dice])
+                    if self.check_move([i, i + dice*self.player]):
+                        valid_moves.append([i, i + dice*self.player])
                 except ValueError:
                     pass
 
@@ -208,3 +238,8 @@ class Backgammon:
         rep += "\n"
         rep += "player: " + str(self.player)
         return rep
+
+
+bg = Backgammon()
+bg.move(move=bg.get_valid_moves()[0])
+bg.undo_move()
