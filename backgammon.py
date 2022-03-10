@@ -4,6 +4,7 @@ from copy import copy
 
 #To Do:
 # test all changes especially the finding legal moves part
+# store perspective in the board
 # complete the rewrite of the Backgammon class
 # complete move method
 # write an IOmove method, that allows players to make moves via console. This is where commit move etc should live
@@ -31,6 +32,7 @@ def unique_permutations(l: list):
 def subsets_by_priority(l: list):
     subsets = []
     l.sort(reverse=True)
+
     for i in range(len(l)+1):
         subsets += combinations(l, i)
 
@@ -44,10 +46,10 @@ class Player:
 
 
 class Leap:
-    def __init__(self, starting_index, distance):
+    def __init__(self, start, distance):
         if 1 <= distance <= 6:
-            self.starting_index = starting_index
-            self.end_index = starting_index+distance
+            self.start = start
+            self.end = start+distance
         else:
             raise ValueError("Invalid leap: Distance has to be between 1 and 6.")
 
@@ -57,6 +59,29 @@ class Board:
 
     def __init__(self, content=default_board):
         self.content = copy(content)
+
+    def leap(self, *args, **kwargs):
+        if "leap" in kwargs: #why kwarg??
+            leap = kwargs["leap"]
+            # check for validity of move
+            if self.check_leap(leap):
+                # move is valid
+                self.content[leap.start] -= self.player_sign #fix
+                if 25 > leap.end > 0:
+                    if self.content[leap.end] * self.player_sign == -1:
+                        # kick opposing piece
+                        self.content[leap.end] += self.player_sign
+                        if self.player_sign == 1:
+                            self.content[25] -= self.player_sign
+                        else:
+                            self.content[0] -= self.player_sign
+                    self.board[leap.end] += self.player_sign
+        else:
+            # TODO: engine makes a move
+            pass
+        if self.check_win():
+            self.win()
+        print(self)
 
     #TODO: move pieces in the game first
     def check_leap(self, leap, perspective):
@@ -69,19 +94,19 @@ class Board:
         elif self.content[leap[0]] * perspective <= 0:
             return False
         # bring
-        elif leap.end_index >= len(self.content) - 1:
+        elif leap.end >= len(self.content) - 1:
             if not self.check_last_quarter():
                 return False
-        elif leap.end_index <= 0:
+        elif leap.end <= 0:
             if not self.check_last_quarter():
                 return False
         else:
-            if self.content[leap.end_index] * perspective < -1:
+            if self.content[leap.end] * perspective < -1:
                 return False
         return True
 
 
-    def get_legal_moves(self, diceThrow, perspective): #try to use all dice first, iteratively decrease the number of dice until a move is possible
+    def get_legal_moves(self, diceThrow, perspective): #try to use all dice first, iteratively decrease the number of dice until a move is possi
         moves = []
         dice_subsets = subsets_by_priority(diceThrow)
         for dice_subset in dice_subsets:
@@ -116,6 +141,25 @@ class Board:
 
         return result_boards
 
+    def check_last_quarter(self, perspective):
+        check = True
+        if self.player_sign == 1:
+            rg = (0, int(3 * len(self.content) / 4))
+        else:
+            rg = (int(len(self.content) / 4), len(self.content))
+        for i in range(*rg):
+            if self.content[i] * perspective > 0:
+                check = False
+        return check
+
+    def check_win(self):
+        win = True
+        for field in self.content:
+            if field * self.player_sign > 0:
+                win = False
+                break
+        return win
+
     def __str__(self):
         rep = str(self.content[0]) + " | "
         for i in range(int(len(self.content) / 2) - 1, 0, -1):
@@ -149,32 +193,9 @@ class Backgammon:
             self.num_dices = 2
 
         # decide which player starts
-        self.dices = self.roll_dices()  # store last dice roll
-        self.dices_left = copy(self.dices)    # is set automatically when dices are set
-        while self.dices[0] == self.dices[1]:
-            self.dices = self.roll_dices()
-        if self.dices[0] > self.dices[1]:
-            self.player_sign = 1  # 1 -> white
-        elif self.dices[0] < self.dices[1]:
-            self.player_sign = -1  # -1 -> black
+        self.player_sign = randint(1, 2)*2-1
 
         print(self)
-
-        # make sure there are valid moves
-        while len(self.get_valid_moves()) == 0:
-            # no moves available
-            self.dices = self.roll_dices()
-            self.player_sign = -self.player_sign
-            print(self)
-
-    @property
-    def player_sign(self):
-        return self._player_sign
-
-    @player_sign.setter
-    def player_sign(self, player_sign):
-        if player_sign == -1 or player_sign == 1:
-            self._player_sign = player_sign
 
 
     def move(self, next_board_state):
@@ -183,69 +204,29 @@ class Backgammon:
         self.player_sign *= -1
 
 
-    def move(self, *args, **kwargs):
-        if "move" in kwargs:
-            move = kwargs["move"]
-            # check for validity of move
-            if self.check_move(move):
-                # move is valid
-                self.board[move[0]] -= self.player_sign
-                if 25 > move[1] > 0:
-                    if self.board[move[1]] * self.player_sign == -1:
-                        # kick opposing piece
-                        self.board[move[1]] += self.player_sign
-                        if self.player_sign == 1:
-                            self.board[25] -= self.player_sign
-                        else:
-                            self.board[0] -= self.player_sign
-                    self.board[move[1]] += self.player_sign
-                self.dices_left.remove(self.player_sign * (move[1] - move[0]))
-        else:
-            # TODO: engine makes a move
-            pass
-        if self.check_win():
-            self.win()
-        print(self)
 
-    def undo_move(self):
-        self.board = self.board_old
-        self.dices_left = self.dices
-        print(self)
+    # def undo_move(self):
+    #     self.board = self.board_old
+    #     self.dices_left = self.dices
+    #     print(self)
 
-    def commit_move(self):
-        if len(self.dices_left) == 0:
-            # no moves left => roll dice and switch player
-            self.dices = self.roll_dices()
-            self.player_sign *= -1
-            self.board_old = self.board
-            print(self)
-            # make sure there are valid moves
-            while len(self.get_valid_moves()) == 0:
-                # no moves available
-                self.dices = self.roll_dices()
-                self.player_sign = -self.player_sign
-                print(self)
+    # def commit_move(self):
+    #     if len(self.dices_left) == 0:
+    #         # no moves left => roll dice and switch player
+    #         self.dices = self.roll_dices()
+    #         self.player_sign *= -1
+    #         self.board_old = self.board
+    #         print(self)
+    #         # make sure there are valid moves
+    #         while len(self.get_valid_moves()) == 0:
+    #             # no moves available
+    #             self.dices = self.roll_dices()
+    #             self.player_sign = -self.player_sign
+    #             print(self)
 
 
 
     # check if pieces are in the last quarter of the board
-    def check_last_quarter(self):
-        check = True
-        if self.player_sign == 1:
-            rg = (0, int(3 * len(self.board) / 4))
-        else:
-            rg = (int(len(self.board) / 4), len(self.board))
-        for i in range(*rg):
-            if self.board[i] * self.player_sign > 0:
-                check = False
-        return check
-
-    def check_win(self):
-        win = True
-        for field in self.board:
-            if field * self.player_sign > 0:
-                win = False
-        return win
 
     def win(self):
         if self.player_sign == 1:
